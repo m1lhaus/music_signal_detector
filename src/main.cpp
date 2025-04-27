@@ -5,18 +5,20 @@
 
 // Constants
 constexpr int SILENCE_VAR_THRESHOLD = 5;   // ADC units of variation for signal to be considered silence
-constexpr float SILENCE_ADAPT_RATE = 0.01; // How quickly to adapt (0-1) the silence level
+constexpr float SILENCE_ADAPT_RATE = 0.05; // How quickly to adapt (0-1) the silence level
 constexpr int SILENCE_BUFFER_SIZE = 100;   // Number of samples to take for silence detection
 
 constexpr int SAMPLE_EVERY_MS = 10; // How often to sample / run the loop (ms)
 
-constexpr int DIFF_ADAPT_RATE = 0.1;
+constexpr float DIFF_ADAPT_RATE = 0.1;
 constexpr float DIFF_THRESHOLD = SILENCE_VAR_THRESHOLD;
 
+constexpr uint32_t BOOT_DELAY_MS = (uint32_t)1U * 1000U;      // delay before we start the music detection
 constexpr uint32_t TURN_ON_DELAY_MS = (uint32_t)1U * 1000U;   // min length of active signal to be considered as music (in ms)
 constexpr uint32_t TURN_OFF_DELAY_MS = (uint32_t)30U * 1000U; // delay before we turn off the power
 
-constexpr int STATUS_LED_PIN = 13; // Pin for status LED
+constexpr int MUSIC_ON_LED_PIN = 2;  // Pin for status LED
+constexpr int MUSIC_OFF_LED_PIN = 3; // Pin for status LED
 
 class RingBuffer
 {
@@ -59,13 +61,14 @@ public:
 } g_RingBuffer;
 
 // Variables
-float g_silenceLevel = 460; // Starting point (~2.25V equivalent)
+float g_silenceLevel = 512; // Starting point (~2.5V equivalent)
 float g_signalCumSum = 0.0f;
 
 // Global variables for timing
+unsigned long g_bootTime = 0;
 unsigned long g_musicStartTime = 0;
 unsigned long g_silenceStartTime = 0;
-bool g_musicActive = false;
+bool g_musicActive = true;
 
 float toVoltage(const int value)
 {
@@ -183,7 +186,8 @@ void detectMusic()
 
 void reactOnMusicStatus()
 {
-    digitalWrite(STATUS_LED_PIN, g_musicActive ? HIGH : LOW);
+    digitalWrite(MUSIC_ON_LED_PIN, g_musicActive ? HIGH : LOW);
+    digitalWrite(MUSIC_OFF_LED_PIN, g_musicActive ? LOW : HIGH);
 
     // TODO: handle relay control here
 }
@@ -192,9 +196,14 @@ void reactOnMusicStatus()
 
 void setup()
 {
-    pinMode(STATUS_LED_PIN, OUTPUT);
-    digitalWrite(STATUS_LED_PIN, LOW); // Turn off LED
+    pinMode(MUSIC_ON_LED_PIN, OUTPUT);
+    pinMode(MUSIC_OFF_LED_PIN, OUTPUT);
     Serial.begin(9600);
+
+    digitalWrite(MUSIC_ON_LED_PIN, LOW);
+    digitalWrite(MUSIC_OFF_LED_PIN, LOW);
+
+    delay(BOOT_DELAY_MS); // wait for the system to stabilize
 
     initialSilenceLevelDetection();
 }
@@ -209,29 +218,31 @@ void loop()
     // Adjust the signal cumulative sum based on the silence level
     float signal = analogIn - g_silenceLevel;
     float signalAbs = abs(signal);
-    g_signalCumSum = g_signalCumSum * (1.0f - DIFF_ADAPT_RATE) + signalAbs * DIFF_ADAPT_RATE;
+    g_signalCumSum = (g_signalCumSum * (1.0f - DIFF_ADAPT_RATE)) + (signalAbs * DIFF_ADAPT_RATE);
 
     detectMusic();
     reactOnMusicStatus();
 
 #ifdef DEBUG_PLOT
-    Serial.print(">a0:");         // add spacing between variables
-    Serial.print(analogIn);       // output sin(t) variable
-    Serial.print(",silence:");    // add spacing between variables
-    Serial.print(g_silenceLevel); // output filtered value
-    Serial.print(",signal:");     // add spacing between variables
-    Serial.print(signal);         // output sin(t) variable
-    Serial.print(",signalAbs:");  // add spacing between variables
-    Serial.print(signalAbs);      // output sin(t) variable
+    Serial.print(">a0:");           // add spacing between variables
+    Serial.print(analogIn);         // output sin(t) variable
+    Serial.print(",silence:");      // add spacing between variables
+    Serial.print(g_silenceLevel);   // output filtered value
+    Serial.print(",signal:");       // add spacing between variables
+    Serial.print(signal);           // output sin(t) variable
+    Serial.print(",signalAbs:");    // add spacing between variables
+    Serial.print(signalAbs);        // output sin(t) variable
+    Serial.print(",signalCumSum:"); // add spacing between variables
+    Serial.print(g_signalCumSum);   // output sin(t) variable
 
-    Serial.print(",a0V:");                   // add spacing between variables
-    Serial.print(toVoltage(analogIn));       // output sin(t) variable
-    Serial.print(",silenceV:");              // add spacing between variables
-    Serial.print(toVoltage(g_silenceLevel)); // output filtered value
-    Serial.print(",signalV:");               // add spacing between variables
-    Serial.print(toVoltage(signal));         // output sin(t) variable
-    Serial.print(",signalAbsV:");            // add spacing between variables
-    Serial.print(toVoltage(signalAbs));      // output sin(t) variable
+    // Serial.print(",a0V:");                   // add spacing between variables
+    // Serial.print(toVoltage(analogIn));       // output sin(t) variable
+    // Serial.print(",silenceV:");              // add spacing between variables
+    // Serial.print(toVoltage(g_silenceLevel)); // output filtered value
+    // Serial.print(",signalV:");               // add spacing between variables
+    // Serial.print(toVoltage(signal));         // output sin(t) variable
+    // Serial.print(",signalAbsV:");            // add spacing between variables
+    // Serial.print(toVoltage(signalAbs));      // output sin(t) variable
 
     Serial.println();
 #endif
