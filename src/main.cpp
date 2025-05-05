@@ -1,24 +1,22 @@
 #include "Arduino.h"
 
 #define DEBUG_PLOT 1
-#define DEBUG_PRINT 1
+#define DEBUG_PRINT 0
 
 // Constants
-constexpr int SAMPLE_EVERY_MS = 1; // How often to sample / run the loop (ms)
+constexpr int SAMPLE_EVERY_MS = 10; // How often to sample / run the loop (ms)
 
 // Buffer sizes
-constexpr int SAMPLE_BUFFER_SIZE = 25;     // Raw samples buffer size
-constexpr int VAR_BUFFER_SIZE = 25;        // Variance values buffer size
-constexpr int VAR_OF_VAR_BUFFER_SIZE = 25; // Variance of variance buffer size
+constexpr int SAMPLE_BUFFER_SIZE = 25; // Raw samples buffer size
+constexpr int VAR_BUFFER_SIZE = 25;    // Variance values buffer size
 
 // Thresholds for detection
-// constexpr float VAR_THRESHOLD = 20.0f;       // Threshold for variance to detect music
 constexpr float VAR_OF_VAR_THRESHOLD = 5.0f; // Threshold for variance of variance to detect music
 
 // Timing constants
-constexpr uint32_t BOOT_DELAY_MS = (uint32_t)1U * 1000U;      // delay before we start the music detection
-constexpr uint32_t TURN_ON_DELAY_MS = (uint32_t)1U * 1000U;   // min length of active signal to be considered as music (in ms)
-constexpr uint32_t TURN_OFF_DELAY_MS = (uint32_t)30U * 1000U; // delay before we turn off the power
+constexpr uint32_t BOOT_DELAY_MS = 500U;            // delay before we start the music detection
+constexpr uint32_t TURN_ON_DELAY_MS = 1U * 1000U;   // min length of active signal to be considered as music (in ms)
+constexpr uint32_t TURN_OFF_DELAY_MS = 10U * 1000U; // delay before we turn off the power
 
 constexpr int MUSIC_ON_LED_PIN = 2;  // Pin for status LED
 constexpr int MUSIC_OFF_LED_PIN = 3; // Pin for status LED
@@ -31,6 +29,11 @@ private:
     T m_buffer[SIZE];
     size_t m_head;
     size_t m_count;
+
+    T get_(size_t index) const
+    {
+        return m_buffer[(m_head - 1 - index + SIZE) % SIZE];
+    }
 
 public:
     CircularBuffer() : m_head(0), m_count(0)
@@ -52,12 +55,7 @@ public:
     {
         if (index >= m_count)
             return T();
-        return m_buffer[(m_head - 1 - index + SIZE) % SIZE];
-    }
-
-    const T *getPtr() const
-    {
-        return m_buffer;
+        return get_(index);
     }
 
     size_t size() const
@@ -79,7 +77,7 @@ public:
         float sum = 0.0f;
         for (size_t i = 0; i < m_count; i++)
         {
-            sum += get(i);
+            sum += get_(i);
         }
         return sum / m_count;
     }
@@ -95,7 +93,7 @@ public:
 
         for (size_t i = 0; i < m_count; i++)
         {
-            float diff = get(i) - avg;
+            float diff = get_(i) - avg;
             sumSquareDiff += diff * diff;
         }
 
@@ -106,12 +104,10 @@ public:
 // Buffer instances
 CircularBuffer<int, SAMPLE_BUFFER_SIZE> g_SampleBuffer;
 CircularBuffer<float, VAR_BUFFER_SIZE> g_VarBuffer;
-CircularBuffer<float, VAR_OF_VAR_BUFFER_SIZE> g_VarOfVarBuffer;
 
 // Global variables
 float g_currentVariance = 0.0f;
 float g_varOfVar = 0.0f;
-float g_varOfVarMean = 0.0f;
 
 // Global variables for timing
 unsigned long g_musicStartTime = 0;
@@ -138,9 +134,6 @@ void updateVarianceMetrics(int newSample)
         if (g_VarBuffer.isFull())
         {
             g_varOfVar = g_VarBuffer.variance();
-            g_VarOfVarBuffer.push(g_varOfVar);
-
-            g_varOfVarMean = g_VarOfVarBuffer.mean();
 
             g_statsInitialized = true;
         }
@@ -156,7 +149,7 @@ void detectMusic()
     if (g_statsInitialized)
     {
         // Music is detected when variance or variance-of-variance exceeds thresholds
-        musicSignalDetected = (g_varOfVarMean > VAR_OF_VAR_THRESHOLD);
+        musicSignalDetected = (g_varOfVar > VAR_OF_VAR_THRESHOLD);
     }
 
     // Handle music state transitions with timing
@@ -173,7 +166,7 @@ void detectMusic()
             else if (currentTime - g_musicStartTime > TURN_ON_DELAY_MS)
             {
                 g_musicActive = true; // Activate music state after delay
-#ifdef DEBUG_PRINT
+#if DEBUG_PRINT
                 Serial.println("Music detected");
 #endif
             }
@@ -192,7 +185,7 @@ void detectMusic()
             else if (currentTime - g_silenceStartTime > TURN_OFF_DELAY_MS)
             {
                 g_musicActive = false; // End music state after silence delay
-#ifdef DEBUG_PRINT
+#if DEBUG_PRINT
                 Serial.println("Music stopped");
 #endif
             }
@@ -221,14 +214,6 @@ void setup()
     digitalWrite(MUSIC_OFF_LED_PIN, LOW);
 
     delay(BOOT_DELAY_MS); // wait for the system to stabilize
-
-    // Initialize with a few samples to start
-    for (int i = 0; i < 10; i++)
-    {
-        int sample = analogRead(A0);
-        g_SampleBuffer.push(sample);
-        delay(10);
-    }
 }
 
 void loop()
@@ -251,8 +236,6 @@ void loop()
     Serial.print(g_currentVariance);
     Serial.print(",var_of_var:"); // variance of variance
     Serial.print(g_varOfVar);
-    Serial.print(",var_of_var_mean:"); // mean of variance of variance
-    Serial.print(g_varOfVarMean);
     Serial.println();
 #endif
 
