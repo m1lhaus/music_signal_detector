@@ -20,6 +20,7 @@ constexpr uint32_t TURN_OFF_DELAY_MS = 10U * 1000U; // delay before we turn off 
 
 constexpr int MUSIC_ON_LED_PIN = 2;  // Pin for status LED
 constexpr int MUSIC_OFF_LED_PIN = 3; // Pin for status LED
+constexpr int RELAY_PIN = 8;       // Pin for relay control
 
 // Generic circular buffer template with statistical functions
 template <typename T, size_t SIZE>
@@ -198,8 +199,7 @@ void reactOnMusicStatus()
 {
     digitalWrite(MUSIC_ON_LED_PIN, g_musicActive ? HIGH : LOW);
     digitalWrite(MUSIC_OFF_LED_PIN, g_musicActive ? LOW : HIGH);
-
-    // TODO: handle relay control here
+    digitalWrite(RELAY_PIN, g_musicActive ? LOW : HIGH);
 }
 
 // ---------------------------------------------------
@@ -212,6 +212,8 @@ void setup()
 
     digitalWrite(MUSIC_ON_LED_PIN, LOW);
     digitalWrite(MUSIC_OFF_LED_PIN, LOW);
+    pinMode(RELAY_PIN, OUTPUT);
+    digitalWrite(RELAY_PIN, HIGH); // Turn off relay initially
 
     delay(BOOT_DELAY_MS); // wait for the system to stabilize
 }
