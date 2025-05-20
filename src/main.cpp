@@ -1,8 +1,5 @@
 #include "Arduino.h"
 
-#define DEBUG_PLOT 1
-#define DEBUG_PRINT 0
-
 // Constants
 constexpr int SAMPLE_EVERY_MS = 10; // How often to sample / run the loop (ms)
 
@@ -14,13 +11,14 @@ constexpr int VAR_BUFFER_SIZE = 25;    // Variance values buffer size
 constexpr float VAR_OF_VAR_THRESHOLD = 5.0f; // Threshold for variance of variance to detect music
 
 // Timing constants
-constexpr uint32_t BOOT_DELAY_MS = 500U;            // delay before we start the music detection
-constexpr uint32_t TURN_ON_DELAY_MS = 1U * 1000U;   // min length of active signal to be considered as music (in ms)
-constexpr uint32_t TURN_OFF_DELAY_MS = 10U * 1000U; // delay before we turn off the power
+constexpr uint32_t BOOT_DELAY_MS = 500U;                  // delay before we start the music detection
+constexpr uint32_t TURN_ON_DELAY_MS = 1U * 1000U;         // min length of active signal to be considered as music (on debug 1 second is used)
+constexpr uint32_t TURN_OFF_DELAY_MS = 10U * 60U * 1000U; // delay before we turn off the power (on debug 10 seconds is used)
 
-constexpr int MUSIC_ON_LED_PIN = 2;  // Pin for status LED
+constexpr int RELAY_PIN = 2;         // Pin for relay control
 constexpr int MUSIC_OFF_LED_PIN = 3; // Pin for status LED
-constexpr int RELAY_PIN = 8;       // Pin for relay control
+constexpr int MUSIC_ON_LED_PIN = 4;  // Pin for status LED
+constexpr int DEBUG_SWITCH_PIN = 5;  // Pin to turn on/off debug output
 
 // Generic circular buffer template with statistical functions
 template <typename T, size_t SIZE>
@@ -109,6 +107,7 @@ CircularBuffer<float, VAR_BUFFER_SIZE> g_VarBuffer;
 // Global variables
 float g_currentVariance = 0.0f;
 float g_varOfVar = 0.0f;
+bool g_isDebugOn = false;
 
 // Global variables for timing
 unsigned long g_musicStartTime = 0;
@@ -160,16 +159,15 @@ void detectMusic()
 
         if (!g_musicActive)
         {
+            const auto turnOnDelay = g_isDebugOn ? (1U * 1000U) : TURN_ON_DELAY_MS; // Use shorter delay for debug mode
             if (g_musicStartTime == 0)
             {
                 g_musicStartTime = currentTime; // Start music timer
             }
-            else if (currentTime - g_musicStartTime > TURN_ON_DELAY_MS)
+            else if (currentTime - g_musicStartTime > turnOnDelay)
             {
                 g_musicActive = true; // Activate music state after delay
-#if DEBUG_PRINT
-                Serial.println("Music detected");
-#endif
+                // Serial.println("Music detected");
             }
         }
     }
@@ -179,16 +177,15 @@ void detectMusic()
 
         if (g_musicActive)
         {
+            const auto turnOffDelay = g_isDebugOn ? (10U * 1000U) : TURN_OFF_DELAY_MS; // Use shorter delay for debug mode
             if (g_silenceStartTime == 0)
             {
                 g_silenceStartTime = currentTime; // Start silence timer
             }
-            else if (currentTime - g_silenceStartTime > TURN_OFF_DELAY_MS)
+            else if (currentTime - g_silenceStartTime > turnOffDelay)
             {
                 g_musicActive = false; // End music state after silence delay
-#if DEBUG_PRINT
-                Serial.println("Music stopped");
-#endif
+                // Serial.println("Silence detected");
             }
         }
     }
@@ -206,20 +203,31 @@ void reactOnMusicStatus()
 
 void setup()
 {
+    pinMode(DEBUG_SWITCH_PIN, INPUT);
     pinMode(MUSIC_ON_LED_PIN, OUTPUT);
     pinMode(MUSIC_OFF_LED_PIN, OUTPUT);
+    pinMode(RELAY_PIN, OUTPUT);
+
     Serial.begin(9600);
 
     digitalWrite(MUSIC_ON_LED_PIN, LOW);
     digitalWrite(MUSIC_OFF_LED_PIN, LOW);
-    pinMode(RELAY_PIN, OUTPUT);
     digitalWrite(RELAY_PIN, HIGH); // Turn off relay initially
 
     delay(BOOT_DELAY_MS); // wait for the system to stabilize
+
+    g_isDebugOn = (digitalRead(DEBUG_SWITCH_PIN) == HIGH);
+    if (!g_isDebugOn)
+    {
+        Serial.print("Debugging output is disabled! Flip the jumper to see the Serial plot data.");
+        Serial.println();
+    } 
 }
 
 void loop()
 {
+    g_isDebugOn = (digitalRead(DEBUG_SWITCH_PIN) == HIGH);
+
     int analogIn = analogRead(A0);
 
     // Update all statistical metrics
@@ -231,15 +239,16 @@ void loop()
     // Update outputs
     reactOnMusicStatus();
 
-#ifdef DEBUG_PLOT
-    Serial.print(">a0:"); // raw signal
-    Serial.print(analogIn);
-    Serial.print(",variance:"); // signal variance
-    Serial.print(g_currentVariance);
-    Serial.print(",var_of_var:"); // variance of variance
-    Serial.print(g_varOfVar);
-    Serial.println();
-#endif
+    if (g_isDebugOn)
+    {
+        Serial.print(">a0:"); // raw signal
+        Serial.print(analogIn);
+        Serial.print(",variance:"); // signal variance
+        Serial.print(g_currentVariance);
+        Serial.print(",var_of_var:"); // variance of variance
+        Serial.print(g_varOfVar);
+        Serial.println();
+    }
 
     delay(SAMPLE_EVERY_MS);
 }
