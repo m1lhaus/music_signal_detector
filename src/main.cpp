@@ -19,6 +19,9 @@ constexpr int RELAY_PIN = 2;         // Pin for relay control
 constexpr int MUSIC_OFF_LED_PIN = 3; // Pin for status LED
 constexpr int MUSIC_ON_LED_PIN = 4;  // Pin for status LED
 constexpr int DEBUG_SWITCH_PIN = 5;  // Pin to turn on/off debug output
+constexpr int EXT_LED_PIN_1 = 6;     // Pin for external status LED (high/low)
+constexpr int EXT_LED_PIN_2 = 7;     // Pin for external status LED (low/high)
+
 
 // Generic circular buffer template with statistical functions
 template <typename T, size_t SIZE>
@@ -197,6 +200,8 @@ void reactOnMusicStatus()
     digitalWrite(MUSIC_ON_LED_PIN, g_musicActive ? HIGH : LOW);
     digitalWrite(MUSIC_OFF_LED_PIN, g_musicActive ? LOW : HIGH);
     digitalWrite(RELAY_PIN, g_musicActive ? LOW : HIGH);
+    digitalWrite(EXT_LED_PIN_1, g_musicActive ? HIGH : LOW); // External LED 1 on when music is active
+    digitalWrite(EXT_LED_PIN_2, g_musicActive ? LOW : HIGH); // External LED 2 off when music is active
 }
 
 // ---------------------------------------------------
@@ -207,12 +212,16 @@ void setup()
     pinMode(MUSIC_ON_LED_PIN, OUTPUT);
     pinMode(MUSIC_OFF_LED_PIN, OUTPUT);
     pinMode(RELAY_PIN, OUTPUT);
+    pinMode(EXT_LED_PIN_1, OUTPUT);
+    pinMode(EXT_LED_PIN_2, OUTPUT);
 
     Serial.begin(9600);
 
     digitalWrite(MUSIC_ON_LED_PIN, LOW);
     digitalWrite(MUSIC_OFF_LED_PIN, LOW);
     digitalWrite(RELAY_PIN, HIGH); // Turn off relay initially
+    digitalWrite(EXT_LED_PIN_1, LOW); // External LED off
+    digitalWrite(EXT_LED_PIN_2, LOW); // External LED off
 
     delay(BOOT_DELAY_MS); // wait for the system to stabilize
 
